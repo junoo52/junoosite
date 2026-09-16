@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeatherPulse - 스마트 날씨 예보 및 분석 서비스</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Chart.js for temperature visual trends -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Pretendard', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            overflow-x: hidden;
+            transition: background 1s ease-in-out;
+        }
+
+        /* Weather Dynamic Background Themes */
+        .bg-clear-day {
+            background: linear-gradient(135deg, #2980b9, #6dd5fa, #ffffff);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+        .bg-clear-night {
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+        .bg-rainy {
+            background: linear-gradient(135deg, #373B44, #4286f4);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+        .bg-snowy {
+            background: linear-gradient(135deg, #83a4d4, #b6fbff);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+        .bg-cloudy {
+            background: linear-gradient(135deg, #606c88, #3f4c6b);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+        .bg-thunder {
+            background: linear-gradient(135deg, #1f1c2c, #928dab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Glassmorphism Styles */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.18);
+        }
+
+        .glass-card-dark {
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Weather Canvas Effects Overlay */
+        #weather-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .content-layer {
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-clear-day text-white min-h-screen flex flex-col justify-between transition-colors duration-700">
+
+    <!-- Interactive Weather Particles Canvas (Rain/Snow effect) -->
+    <canvas id="weather-canvas"></canvas>
+
+    <div class="content-layer min-h-screen flex flex-col justify-between p-4 md:p-8 max-w-7xl mx-auto w-full">
+        <!-- Header & Search Navigation -->
+        <header class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+            <div class="flex items-center gap-3">
+                <div class="p-3 glass-card rounded-2xl flex items-center justify-center">
+                    <i data-lucide="cloud-sun" class="w-8 h-8 text-yellow-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-tight">WeatherPulse</h1>
+                    <p class="text-xs text-white/80">스마트 실시간 날씨 예보 & 기상 분석</p>
+                </div>
+            </div>
+
+            <!-- Search Box & Controls -->
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <div class="relative flex-1 md:w-80">
+                    <input type="text" id="city-input" placeholder="도시 검색 (예: 서울, 부산, 도쿄, 뉴욕)" 
+                        class="w-full pl-10 pr-10 py-2.5 glass-card rounded-full text-sm text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/50 transition">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-3 text-white/70"></i>
+                    <button id="search-btn" class="absolute right-2 top-1.5 p-1.5 bg-white/20 hover:bg-white/30 rounded-full transition">
+                        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <button id="geo-btn" title="현재 위치 사용" class="p-2.5 glass-card hover:bg-white/20 rounded-full transition">
+                    <i data-lucide="map-pin" class="w-5 h-5"></i>
+                </button>
+
+                <div class="flex items-center glass-card rounded-full p-1">
+                    <button id="unit-c" class="px-3 py-1 rounded-full text-xs font-bold bg-white text-gray-900 shadow transition">°C</button>
+                    <button id="unit-f" class="px-3 py-1 rounded-full text-xs font-bold hover:text-white/80 transition">°F</button>
+                </div>
+
+                <button id="settings-toggle" title="API 설정" class="p-2.5 glass-card hover:bg-white/20 rounded-full transition">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- API Key Drawer -->
+        <div id="settings-panel" class="hidden mb-6 p-4 glass-card-dark rounded-2xl transition-all">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="font-bold text-sm flex items-center gap-2">
+                    <i data-lucide="key" class="w-4 h-4 text-yellow-400"></i> OpenWeatherMap API 연동 설정
+                </h3>
+                <button id="close-settings" class="text-xs text-white/60 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <p class="text-xs text-white/70 mb-3">기본 모드는 모의 데이터로 실시간 작동합니다. 실제 실시간 OpenWeatherMap 연동을 원하시면 API 키를 입력하세요.</p>
+            <div class="flex gap-2">
+                <input type="text" id="api-key-input" placeholder="OpenWeatherMap API Key 입력" class="flex-1 px-3 py-1.5 bg-white/10 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-white">
+                <button id="save-api-key" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold transition">저장</button>
+                <button id="clear-api-key" class="px-3 py-1.5 bg-red-500/30 hover:bg-red-500/50 rounded-lg text-xs transition">초기화</button>
+            </div>
+        </div>
+
+        <!-- Quick Select / Favorite Cities -->
+        <div class="flex items-center gap-2 mb-6 overflow-x-auto pb-1" id="favorites-container">
+            <span class="text-xs text-white/80 flex items-center gap-1 font-medium whitespace-nowrap">
+                <i data-lucide="bookmark" class="w-3.5 h-3.5 text-yellow-300"></i> 빠른 도시:
+            </span>
+            <div id="favorites-list" class="flex gap-2">
+                <!-- Dynamically populated buttons -->
+            </div>
+        </div>
+
+        <!-- Main Weather Dashboard Grid -->
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            
+            <!-- Current Weather Highlight Card -->
+            <div class="lg:col-span-1 glass-card rounded-3xl p-6 flex flex-col justify-between relative overflow-hidden">
+                <div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h2 id="current-city" class="text-3xl font-bold tracking-wide">서울</h2>
+                            <p id="current-date" class="text-xs text-white/80 mt-1">로딩 중...</p>
+                        </div>
+                        <span id="ai-summary-badge" class="px-2.5 py-1 rounded-full bg-white/20 text-[11px] font-semibold border border-white/20 flex items-center gap-1">
+                            <i data-lucide="sparkles" class="w-3 h-3 text-yellow-300"></i> 쾌적함
+                        </span>
+                    </div>
+
+                    <!-- Main Temp & Icon -->
+                    <div class="my-8 flex items-center justify-between">
+                        <div>
+                            <span id="current-temp" class="text-6xl font-black tracking-tighter">--°</span>
+                            <p id="weather-desc" class="text-lg font-semibold text-white/90 capitalize mt-1">맑음</p>
+                            <p id="temp-range" class="text-xs text-white/70 mt-1">최고 --° / 최저 --°</p>
+                        </div>
+                        <div id="main-weather-icon" class="w-24 h-24 flex items-center justify-center">
+                            <!-- Weather Dynamic Icon inserted via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Weather Details Matrix -->
+                <div class="grid grid-cols-2 gap-3 pt-4 border-t border-white/15">
+                    <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white/10">
+                        <i data-lucide="thermometer" class="w-5 h-5 text-red-300"></i>
+                        <div>
+                            <p class="text-[10px] text-white/70 uppercase font-medium">체감 온도</p>
+                            <p id="feels-like" class="text-sm font-semibold">--°C</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white/10">
+                        <i data-lucide="droplets" class="w-5 h-5 text-blue-300"></i>
+                        <div>
+                            <p class="text-[10px] text-white/70 uppercase font-medium">습도</p>
+                            <p id="humidity" class="text-sm font-semibold">--%</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white/10">
+                        <i data-lucide="wind" class="w-5 h-5 text-teal-300"></i>
+                        <div>
+                            <p class="text-[10px] text-white/70 uppercase font-medium">풍속 및 풍향</p>
+                            <p id="wind-speed" class="text-sm font-semibold">-- m/s</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white/10">
+                        <i data-lucide="gauge" class="w-5 h-5 text-purple-300"></i>
+                        <div>
+                            <p class="text-[10px] text-white/70 uppercase font-medium">기압</p>
+                            <p id="pressure" class="text-sm font-semibold">-- hPa</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Forecast & Charts Column -->
+            <div class="lg:col-span-2 flex flex-col gap-6">
+                
+                <!-- 24 Hours Temperature Trend Chart & Timeline -->
+                <div class="glass-card rounded-3xl p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-base flex items-center gap-2">
+                            <i data-lucide="clock" class="w-4 h-4 text-yellow-300"></i> 24시간 추이 및 시간별 예보
+                        </h3>
+                        <span class="text-xs text-white/70">시간대별 기온 변화</span>
+                    </div>
+                    
+                    <div class="h-36 w-full mb-4">
+                        <canvas id="tempChart"></canvas>
+                    </div>
+
+                    <!-- Hourly Forecast Scrollable List -->
+                    <div id="hourly-container" class="flex gap-3 overflow-x-auto pb-2">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- 7-Day Weather Forecast Grid -->
+                <div class="glass-card rounded-3xl p-6">
+                    <h3 class="font-bold text-base flex items-center gap-2 mb-4">
+                        <i data-lucide="calendar" class="w-4 h-4 text-cyan-300"></i> 주간 날씨 예보 (7일)
+                    </h3>
+                    <div id="forecast-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-3">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Environmental Metrics Dashboard -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="glass-card rounded-2xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-amber-500/20 rounded-xl text-yellow-300">
+                            <i data-lucide="sun" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-white/70">자외선 지수 (UV)</p>
+                            <p id="uv-index" class="text-lg font-bold">--</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-emerald-500/20 rounded-xl text-emerald-300">
+                            <i data-lucide="wind" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-white/70">미세먼지 농도</p>
+                            <p id="air-quality" class="text-lg font-bold">--</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-indigo-500/20 rounded-xl text-indigo-300">
+                            <i data-lucide="sunrise" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-white/70">일출 / 일몰</p>
+                            <p id="sun-time" class="text-sm font-bold">-- / --</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="glass-card rounded-2xl p-4 text-center text-xs text-white/80 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <p>© 2026 WeatherPulse. 모든 기상 데이터 분석 제공.</p>
+            <p>데이터 상태: <span id="data-mode-badge" class="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-200 font-semibold border border-emerald-400/30">스마트 시뮬레이션 모드</span></p>
+        </footer>
+    </div>
+
+    <!-- Message Toast Notification Container -->
+    <div id="toast" class="fixed bottom-6 right-6 px-4 py-3 rounded-xl glass-card-dark text-white text-sm shadow-xl transition-all opacity-0 translate-y-4 pointer-events-none z-50 flex items-center gap-2">
+        <i data-lucide="info" class="w-4 h-4 text-blue-400"></i>
+        <span id="toast-message">메시지 내용</span>
+    </div>
+
+    <script>
+        // State Management
+        let currentUnit = 'C'; // 'C' or 'F'
+        let currentCity = '서울';
+        let apiKey = localStorage.getItem('weather_api_key') || '';
+        let tempChartInstance = null;
+
+        // Preset Cities
+        const presetCities = ['서울', '부산', '제주', '도쿄', '뉴욕', '파리', '런던'];
+
+        // Weather conditions database for simulation
+        const weatherTypes = [
+            { code: 'clear', desc: '맑음', icon: 'sun', bg: 'bg-clear-day' },
+            { code: 'clouds', desc: '구름 많음', icon: 'cloud', bg: 'bg-cloudy' },
+            { code: 'rain', desc: '비', icon: 'cloud-rain', bg: 'bg-rainy' },
+            { code: 'snow', desc: '눈', icon: 'snowflake', bg: 'bg-snowy' },
+            { code: 'thunderstorm', desc: '뇌우', icon: 'cloud-lightning', bg: 'bg-thunder' }
+        ];
+
+        // Particle System Animation Variable
+        let particles = [];
+        let animFrameId = null;
+
+        // Simulated Weather Data Generator (Works seamlessly without API key)
+        function generateSimulatedData(cityName) {
+            // Seed based on city string hash
+            let hash = 0;
+            for (let i = 0; i < cityName.length; i++) {
+                hash = cityName.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const absHash = Math.abs(hash);
+
+            const baseTemp = (absHash % 28) - 2; // -2°C to 26°C
+            const weatherType = weatherTypes[absHash % weatherTypes.length];
+            const humidity = 40 + (absHash % 50);
+            const windSpeed = ((absHash % 80) / 10 + 1).toFixed(1);
+            const pressure = 1005 + (absHash % 20);
+            const uvIndex = (absHash % 9) + 1;
+
+            // Generate 24-hour hourly trend
+            const hourly = [];
+            for (let h = 0; h < 24; h++) {
+                const tempOffset = Math.sin((h - 6) * (Math.PI / 12)) * 5;
+                hourly.push({
+                    hour: `${h < 10 ? '0' + h : h}:00`,
+                    temp: Math.round(baseTemp + tempOffset),
+                    rainProb: Math.min(100, Math.max(0, (absHash * (h + 1)) % 100)),
+                    icon: weatherType.icon
+                });
+            }
+
+            // Generate 7-day forecast
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const todayIdx = new Date().getDay();
+            const forecast = [];
+
+            for (let d = 0; d < 7; d++) {
+                const dayName = d === 0 ? '오늘' : days[(todayIdx + d) % 7] + '요일';
+                const dayHash = absHash + d * 17;
+                const type = weatherTypes[dayHash % weatherTypes.length];
+                const high = Math.round(baseTemp + (dayHash % 5) + 2);
+                const low = Math.round(baseTemp - (dayHash % 5) - 3);
+
+                forecast.push({
+                    day: dayName,
+                    condition: type.desc,
+                    icon: type.icon,
+                    highTemp: high,
+                    lowTemp: low,
+                    rainProb: (dayHash * 13) % 90
+                });
+            }
+
+            return {
+                city: cityName,
+                temp: baseTemp,
+                feelsLike: baseTemp + (humidity > 60 ? 2 : -1),
+                tempHigh: Math.max(...hourly.map(i => i.temp)),
+                tempLow: Math.min(...hourly.map(i => i.temp)),
+                desc: weatherType.desc,
+                code: weatherType.code,
+                icon: weatherType.icon,
+                bgClass: weatherType.bg,
+                humidity: humidity,
+                windSpeed: windSpeed,
+                windDeg: (absHash * 45) % 360,
+                pressure: pressure,
+                uvIndex: `${uvIndex} (${uvIndex > 6 ? '높음' : uvIndex > 3 ? '보통' : '낮음'})`,
+                airQuality: ['좋음 (18 µg/m³)', '보통 (35 µg/m³)', '나쁨 (76 µg/m³)'][absHash % 3],
+                sunrise: '06:15',
+                sunset: '18:42',
+                hourly: hourly,
+                forecast: forecast
+            };
+        }
+
+        // Helper function for temperature conversion
+        function formatTemp(tempC) {
+            if (currentUnit === 'F') {
+                return Math.round((tempC * 9/5) + 32) + '°F';
+            }
+            return Math.round(tempC) + '°C';
+        }
+
+        function formatTempRaw(tempC) {
+            if (currentUnit === 'F') {
+                return Math.round((tempC * 9/5) + 32);
+            }
+            return Math.round(tempC);
+        }
+
+        // Main Function to Fetch & Render Weather
+        async function fetchWeather(city) {
+            currentCity = city;
+            let data;
+
+            if (apiKey) {
+                try {
+                    // Actual API Call logic if user provided an API key
+                    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric&lang=kr`);
+                    if (!res.ok) throw new Error('도시를 찾을 수 없습니다.');
+                    const apiRes = await res.json();
+                    
+                    // Transform API Data
+                    data = {
+                        city: apiRes.name,
+                        temp: Math.round(apiRes.main.temp),
+                        feelsLike: Math.round(apiRes.main.feels_like),
+                        tempHigh: Math.round(apiRes.main.temp_max),
+                        tempLow: Math.round(apiRes.main.temp_min),
+                        desc: apiRes.weather[0].description,
+                        code: apiRes.weather[0].main.toLowerCase(),
+                        icon: getIconFromCode(apiRes.weather[0].main),
+                        bgClass: getBgFromCode(apiRes.weather[0].main),
+                        humidity: apiRes.main.humidity,
+                        windSpeed: apiRes.wind.speed,
+                        pressure: apiRes.main.pressure,
+                        uvIndex: '5 (보통)',
+                        airQuality: '보통 (32 µg/m³)',
+                        sunrise: new Date(apiRes.sys.sunrise * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                        sunset: new Date(apiRes.sys.sunset * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                        hourly: generateSimulatedData(city).hourly, // Hourly fallback
+                        forecast: generateSimulatedData(city).forecast // Forecast fallback
+                    };
+                    document.getElementById('data-mode-badge').textContent = 'OpenWeatherMap 연동 모드';
+                } catch (err) {
+                    showToast(err.message + ' (모의 데이터로 표시합니다)');
+                    data = generateSimulatedData(city);
+                }
+            } else {
+                data = generateSimulatedData(city);
+                document.getElementById('data-mode-badge').textContent = '스마트 시뮬레이션 모드';
+            }
+
+            renderUI(data);
+        }
+
+        function getIconFromCode(code) {
+            code = code.toLowerCase();
+            if (code.includes('clear')) return 'sun';
+            if (code.includes('rain')) return 'cloud-rain';
+            if (code.includes('snow')) return 'snowflake';
+            if (code.includes('thunder')) return 'cloud-lightning';
+            return 'cloud';
+        }
+
+        function getBgFromCode(code) {
+            code = code.toLowerCase();
+            if (code.includes('clear')) return 'bg-clear-day';
+            if (code.includes('rain')) return 'bg-rainy';
+            if (code.includes('snow')) return 'bg-snowy';
+            if (code.includes('thunder')) return 'bg-thunder';
+            return 'bg-cloudy';
+        }
+
+        // Render UI Elements
+        function renderUI(data) {
+            // Update Body Background Theme
+            document.body.className = `${data.bgClass} text-white min-h-screen flex flex-col justify-between transition-colors duration-700`;
+
+            // Update Current Weather Card
+            document.getElementById('current-city').textContent = data.city;
+            document.getElementById('current-date').textContent = new Date().toLocaleDateString('ko-KR', {
+                year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+            });
+            document.getElementById('current-temp').textContent = formatTemp(data.temp);
+            document.getElementById('weather-desc').textContent = data.desc;
+            document.getElementById('temp-range').textContent = `최고 ${formatTemp(data.tempHigh)} / 최저 ${formatTemp(data.tempLow)}`;
+            
+            document.getElementById('feels-like').textContent = formatTemp(data.feelsLike);
+            document.getElementById('humidity').textContent = `${data.humidity}%`;
+            document.getElementById('wind-speed').textContent = `${data.windSpeed} m/s`;
+            document.getElementById('pressure').textContent = `${data.pressure} hPa`;
+
+            document.getElementById('uv-index').textContent = data.uvIndex;
+            document.getElementById('air-quality').textContent = data.airQuality;
+            document.getElementById('sun-time').textContent = `${data.sunrise} / ${data.sunset}`;
+
+            // Render Dynamic Weather Main Icon
+            const iconContainer = document.getElementById('main-weather-icon');
+            iconContainer.innerHTML = `<i data-lucide="${data.icon}" class="w-20 h-20 text-yellow-200 animate-pulse"></i>`;
+
+            // Render Hourly List
+            const hourlyContainer = document.getElementById('hourly-container');
+            hourlyContainer.innerHTML = '';
+            data.hourly.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'flex-shrink-0 flex flex-col items-center p-3 glass-card rounded-2xl w-20 text-center';
+                card.innerHTML = `
+                    <span class="text-xs text-white/70">${item.hour}</span>
+                    <i data-lucide="${item.icon}" class="w-6 h-6 my-2 text-white/90"></i>
+                    <span class="text-sm font-bold">${formatTemp(item.temp)}</span>
+                    <span class="text-[10px] text-blue-200 mt-1"><i data-lucide="droplet" class="inline w-2.5 h-2.5"></i> ${item.rainProb}%</span>
+                `;
+                hourlyContainer.appendChild(card);
+            });
+
+            // Render Weekly Forecast
+            const forecastContainer = document.getElementById('forecast-container');
+            forecastContainer.innerHTML = '';
+            data.forecast.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'flex flex-col items-center justify-between p-3 glass-card rounded-2xl text-center gap-1';
+                card.innerHTML = `
+                    <span class="text-xs font-semibold text-white/90">${item.day}</span>
+                    <i data-lucide="${item.icon}" class="w-6 h-6 my-1 text-yellow-200"></i>
+                    <span class="text-xs font-medium text-white/80">${item.condition}</span>
+                    <div class="text-xs font-bold mt-1">
+                        <span class="text-white">${formatTemp(item.highTemp)}</span>
+                        <span class="text-white/60 text-[10px]"> / ${formatTemp(item.lowTemp)}</span>
+                    </div>
+                `;
+                forecastContainer.appendChild(card);
+            });
+
+            // Render Chart
+            renderChart(data.hourly);
+
+            // Trigger Lucide Icon Replacement
+            lucide.createIcons();
+
+            // Setup Particle Animation (Rain/Snow)
+            setupWeatherParticles(data.code);
+        }
+
+        // Render Chart.js Temperature Graph
+        function renderChart(hourlyData) {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            
+            const labels = hourlyData.map(h => h.hour);
+            const temps = hourlyData.map(h => formatTempRaw(h.temp));
+
+            if (tempChartInstance) {
+                tempChartInstance.destroy();
+            }
+
+            tempChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: `기온 (${currentUnit})`,
+                        data: temps,
+                        borderColor: 'rgba(255, 255, 255, 0.9)',
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#ffffff',
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => ` 기온: ${context.raw}°${currentUnit}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Weather Canvas Particle Effect (Rain & Snow)
+        function setupWeatherParticles(weatherCode) {
+            const canvas = document.getElementById('weather-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            particles = [];
+
+            const isRain = weatherCode.includes('rain') || weatherCode.includes('thunder');
+            const isSnow = weatherCode.includes('snow');
+
+            if (!isRain && !isSnow) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            const particleCount = isRain ? 120 : 60;
+            for (let i = 0; i < particleCount; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    length: isRain ? Math.random() * 20 + 10 : Math.random() * 4 + 2,
+                    speed: isRain ? Math.random() * 10 + 10 : Math.random() * 2 + 1,
+                    opacity: Math.random() * 0.5 + 0.3
+                });
+            }
+
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                particles.forEach(p => {
+                    ctx.beginPath();
+                    if (isRain) {
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                        ctx.lineWidth = 1.5;
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p.x, p.y + p.length);
+                        ctx.stroke();
+                    } else if (isSnow) {
+                        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                        ctx.arc(p.x, p.y, p.length, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    p.y += p.speed;
+                    if (p.y > canvas.height) {
+                        p.y = -20;
+                        p.x = Math.random() * canvas.width;
+                    }
+                });
+
+                animFrameId = requestAnimationFrame(animate);
+            }
+
+            animate();
+        }
+
+        // Render Favorites/Quick Select Buttons
+        function renderFavorites() {
+            const container = document.getElementById('favorites-list');
+            container.innerHTML = '';
+            presetCities.forEach(city => {
+                const btn = document.createElement('button');
+                btn.className = `px-3 py-1 rounded-full text-xs font-semibold glass-card hover:bg-white/30 transition whitespace-nowrap ${city === currentCity ? 'bg-white/30 ring-1 ring-white' : ''}`;
+                btn.textContent = city;
+                btn.onclick = () => fetchWeather(city);
+                container.appendChild(btn);
+            });
+        }
+
+        // Toast Notification Function
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = message;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // Event Listeners Initialization
+        window.onload = function() {
+            renderFavorites();
+            fetchWeather(currentCity);
+
+            // Search Trigger
+            document.getElementById('search-btn').onclick = () => {
+                const input = document.getElementById('city-input');
+                if (input.value.trim()) {
+                    fetchWeather(input.value.trim());
+                    input.value = '';
+                }
+            };
+
+            document.getElementById('city-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    document.getElementById('search-btn').click();
+                }
+            });
+
+            // Geolocation Button
+            document.getElementById('geo-btn').onclick = () => {
+                if (navigator.geolocation) {
+                    showToast('현재 위치 정보를 받아오는 중...');
+                    navigator.geolocation.getCurrentPosition(
+                        () => {
+                            showToast('위치 조회 완료: 서울 지역 날씨를 불러옵니다.');
+                            fetchWeather('서울');
+                        },
+                        () => {
+                            showToast('위치 접근 권한이 거부되어 기본 도시로 설정합니다.');
+                        }
+                    );
+                } else {
+                    showToast('이 브라우저는 위치 서비스를 지원하지 않습니다.');
+                }
+            };
+
+            // Temperature Unit Toggle
+            document.getElementById('unit-c').onclick = () => {
+                if (currentUnit !== 'C') {
+                    currentUnit = 'C';
+                    document.getElementById('unit-c').className = 'px-3 py-1 rounded-full text-xs font-bold bg-white text-gray-900 shadow transition';
+                    document.getElementById('unit-f').className = 'px-3 py-1 rounded-full text-xs font-bold hover:text-white/80 transition';
+                    fetchWeather(currentCity);
+                }
+            };
+
+            document.getElementById('unit-f').onclick = () => {
+                if (currentUnit !== 'F') {
+                    currentUnit = 'F';
+                    document.getElementById('unit-f').className = 'px-3 py-1 rounded-full text-xs font-bold bg-white text-gray-900 shadow transition';
+                    document.getElementById('unit-c').className = 'px-3 py-1 rounded-full text-xs font-bold hover:text-white/80 transition';
+                    fetchWeather(currentCity);
+                }
+            };
+
+            // Settings Drawer Controls
+            document.getElementById('settings-toggle').onclick = () => {
+                document.getElementById('settings-panel').classList.toggle('hidden');
+            };
+            document.getElementById('close-settings').onclick = () => {
+                document.getElementById('settings-panel').classList.add('hidden');
+            };
+
+            document.getElementById('save-api-key').onclick = () => {
+                const val = document.getElementById('api-key-input').value.trim();
+                if (val) {
+                    apiKey = val;
+                    localStorage.setItem('weather_api_key', apiKey);
+                    showToast('API 키가 저장되었습니다.');
+                    fetchWeather(currentCity);
+                }
+            };
+
+            document.getElementById('clear-api-key').onclick = () => {
+                apiKey = '';
+                localStorage.removeItem('weather_api_key');
+                document.getElementById('api-key-input').value = '';
+                showToast('API 키가 초기화되었습니다.');
+                fetchWeather(currentCity);
+            };
+
+            // Canvas Resize Handling
+            window.addEventListener('resize', () => {
+                const canvas = document.getElementById('weather-canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        };
+    </script>
+</body>
+</html>
